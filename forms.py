@@ -1,9 +1,8 @@
 from django import forms
 from django.contrib.auth.models import User
 from . import models
-from quiz_management_app  import models as QMODEL
 
-class StudentUserForm(forms.ModelForm):
+class TeacherUserForm(forms.ModelForm):
     class Meta:
         model=User
         fields=['first_name','last_name','username','password']
@@ -11,7 +10,7 @@ class StudentUserForm(forms.ModelForm):
         'password': forms.PasswordInput()
         }
 
-class StudentForm(forms.ModelForm):
+class TeacherForm(forms.ModelForm):
     class Meta:
-        model=models.Student
+        model=models.Teacher
         fields=['address','mobile_number']

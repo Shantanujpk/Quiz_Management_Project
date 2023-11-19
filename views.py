@@ -7,119 +7,121 @@ from django.contrib.auth.decorators import login_required,user_passes_test
 from django.conf import settings
 from datetime import date, timedelta
 from quiz_management_app import models as QMODEL
-from teacher_management_app import models as TMODEL
+from student_management_app import models as SMODEL
+from quiz_management_app import forms as QFORM
 
-def studentclick_view(request):
+
+#for showing signup/login button for teacher
+def teacherclick_view(request):
     if request.user.is_authenticated:
         return HttpResponseRedirect('afterlogin')
-    return render(request,'student_management_app/student_homepage.html')
+    return render(request,'teacher_management_app/teacher_homepage.html')
 
-def student_signup_view(request):
-    userForm=forms.StudentUserForm()
-    studentForm=forms.StudentForm()
-    mydict={'userForm':userForm,'studentForm':studentForm}
+def teacher_signup_view(request):
+    userForm=forms.TeacherUserForm()
+    teacherForm=forms.TeacherForm()
+    mydict={'userForm':userForm,'teacherForm':teacherForm}
     if request.method=='POST':
-        userForm=forms.StudentUserForm(request.POST)
-        studentForm=forms.StudentForm(request.POST,request.FILES)
-        if userForm.is_valid() and studentForm.is_valid():
+        userForm=forms.TeacherUserForm(request.POST)
+        teacherForm=forms.TeacherForm(request.POST,request.FILES)
+        if userForm.is_valid() and teacherForm.is_valid():
             user=userForm.save()
             user.set_password(user.password)
             user.save()
-            student=studentForm.save(commit=False)
-            student.user=user
-            student.save()
-            my_student_group = Group.objects.get_or_create(name='STUDENT')
-            my_student_group[0].user_set.add(user)
-        return HttpResponseRedirect('studentlogin')
-    return render(request,'student_management_app/studentsignup.html',context=mydict)
+            teacher=teacherForm.save(commit=False)
+            teacher.user=user
+            teacher.save()
+            my_teacher_group = Group.objects.get_or_create(name='TEACHER')
+            my_teacher_group[0].user_set.add(user)
+        return HttpResponseRedirect('teacherlogin')
+    return render(request,'teacher_management_app/teachersignup.html',context=mydict)
 
-def is_student(user):
-    return user.groups.filter(name='STUDENT').exists()
 
-@login_required(login_url='studentlogin')
-@user_passes_test(is_student)
-def student_dashboard_view(request):
+
+def is_teacher(user):
+    return user.groups.filter(name='TEACHER').exists()
+
+@login_required(login_url='teacherlogin')
+@user_passes_test(is_teacher)
+def teacher_dashboard_view(request):
     dict={
     
     'total_course':QMODEL.Course.objects.all().count(),
     'total_question':QMODEL.Question.objects.all().count(),
+    'total_student':SMODEL.Student.objects.all().count()
     }
-    return render(request,'student_management_app/student_dashboard.html',context=dict)
+    return render(request,'teacher_management_app/teacher_dashboard.html',context=dict)
 
-@login_required(login_url='studentlogin')
-@user_passes_test(is_student)
-def student_exam_view(request):
-    courses=QMODEL.Course.objects.all()
-    return render(request,'student_management_app/student_exam.html',{'courses':courses})
+@login_required(login_url='teacherlogin')
+@user_passes_test(is_teacher)
+def teacher_exam_view(request):
+    return render(request,'teacher_management_app/teacher_exam.html')
 
-@login_required(login_url='studentlogin')
-@user_passes_test(is_student)
-def take_exam_view(request,pk):
-    course=QMODEL.Course.objects.get(id=pk)
-    total_questions=QMODEL.Question.objects.all().filter(course=course).count()
-    questions=QMODEL.Question.objects.all().filter(course=course)
-    total_marks=0
-    for q in questions:
-        total_marks=total_marks + q.marks
-    
-    return render(request,'student_management_app/take_exam.html',{'course':course,'total_questions':total_questions,'total_marks':total_marks})
 
-@login_required(login_url='studentlogin')
-@user_passes_test(is_student)
-def start_exam_view(request,pk):
-    course=QMODEL.Course.objects.get(id=pk)
-    questions=QMODEL.Question.objects.all().filter(course=course)
+@login_required(login_url='teacherlogin')
+@user_passes_test(is_teacher)
+def teacher_add_exam_view(request):
+    courseForm=QFORM.CourseForm()
     if request.method=='POST':
-        pass
-    response= render(request,'student_management_app/start_exam.html',{'course':course,'questions':questions})
-    response.set_cookie('course_id',course.id)
-    return response
+        courseForm=QFORM.CourseForm(request.POST)
+        if courseForm.is_valid():        
+            courseForm.save()
+        else:
+            print("form is invalid")
+        return HttpResponseRedirect('/teacher_management_app/teacher-view-exam')
+    return render(request,'teacher_management_app/teacher_add_exam.html',{'courseForm':courseForm})
 
+@login_required(login_url='teacherlogin')
+@user_passes_test(is_teacher)
+def teacher_view_exam_view(request):
+    courses = QMODEL.Course.objects.all()
+    return render(request,'teacher_management_app/teacher_view_exam.html',{'courses':courses})
 
-@login_required(login_url='studentlogin')
-@user_passes_test(is_student)
-def calculate_marks_view(request):
-    if request.COOKIES.get('course_id') is not None:
-        course_id = request.COOKIES.get('course_id')
-        course=QMODEL.Course.objects.get(id=course_id)
-        
-        total_marks=0
-        questions=QMODEL.Question.objects.all().filter(course=course)
-        for i in range(len(questions)):
-            
-            selected_ans = request.COOKIES.get(str(i+1))
-            actual_answer = questions[i].answer
-            if selected_ans == actual_answer:
-                total_marks = total_marks + questions[i].marks
-        student = models.Student.objects.get(user_id=request.user.id)
-        result = QMODEL.Result()
-        result.marks=total_marks
-        result.exam=course
-        result.student=student
-        result.save()
-
-        return HttpResponseRedirect('view-result')
-
-
-
-@login_required(login_url='studentlogin')
-@user_passes_test(is_student)
-def view_result_view(request):
-    courses=QMODEL.Course.objects.all()
-    return render(request, 'student_management_app/student_marks.html', {'courses': courses})
-
-    
-
-@login_required(login_url='studentlogin')
-@user_passes_test(is_student)
-def check_marks_view(request,pk):
+@login_required(login_url='teacherlogin')
+@user_passes_test(is_teacher)
+def delete_exam_view(request,pk):
     course=QMODEL.Course.objects.get(id=pk)
-    student = models.Student.objects.get(user_id=request.user.id)
-    results= QMODEL.Result.objects.all().filter(exam=course).filter(student=student)
-    return render(request,'student_management_app/check_marks.html',{'results':results})
+    course.delete()
+    return HttpResponseRedirect('/teacher_management_app/teacher-view-exam')
 
-@login_required(login_url='studentlogin')
-@user_passes_test(is_student)
-def student_marks_view(request):
-    courses=QMODEL.Course.objects.all()
-    return render(request,'student_management_app/student_marks.html',{'courses':courses})
+@login_required(login_url='adminlogin')
+def teacher_question_view(request):
+    return render(request,'teacher_management_app/teacher_question.html')
+
+@login_required(login_url='teacherlogin')
+@user_passes_test(is_teacher)
+def teacher_add_question_view(request):
+    questionForm=QFORM.QuestionForm()
+    if request.method=='POST':
+        questionForm=QFORM.QuestionForm(request.POST)
+        if questionForm.is_valid():
+            question=questionForm.save(commit=False)
+            course=QMODEL.Course.objects.get(id=request.POST.get('courseID'))
+            question.course=course
+            question.save()       
+        else:
+            print("form is invalid")
+        return HttpResponseRedirect('/teacher_management_app/teacher-view-question')
+    return render(request,'teacher_management_app/teacher_add_question.html',{'questionForm':questionForm})
+
+@login_required(login_url='teacherlogin')
+@user_passes_test(is_teacher)
+def teacher_view_question_view(request):
+    courses= QMODEL.Course.objects.all()
+    return render(request,'teacher_management_app/teacher_view_question.html',{'courses':courses})
+
+@login_required(login_url='teacherlogin')
+@user_passes_test(is_teacher)
+def see_question_view(request,pk):
+    questions=QMODEL.Question.objects.all().filter(course_id=pk)
+    return render(request,'teacher_management_app/see_question.html',{'questions':questions})
+
+@login_required(login_url='teacherlogin')
+@user_passes_test(is_teacher)
+def remove_question_view(request,pk):
+    question=QMODEL.Question.objects.get(id=pk)
+    question.delete()
+    return HttpResponseRedirect('/teacher_management_app/teacher-view-question')
+
+
+

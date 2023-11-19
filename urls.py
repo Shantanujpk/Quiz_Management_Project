@@ -1,19 +1,21 @@
 from django.urls import path
-from student_management_app import views
+from teacher_management_app import views
 from django.contrib.auth.views import LoginView
 
 urlpatterns = [
-path('student_homepage', views.studentclick_view),
-path('studentlogin', LoginView.as_view(template_name='student_management_app/studentlogin.html'),name='studentlogin'),
-path('studentsignup', views.student_signup_view,name='studentsignup'),
+path('teacher_homepage', views.teacherclick_view),
+path('teacherlogin', LoginView.as_view(template_name='teacher_management_app/teacherlogin.html'),name='teacherlogin'),
+path('teachersignup', views.teacher_signup_view,name='teachersignup'),
+path('teacher-dashboard', views.teacher_dashboard_view,name='teacher-dashboard'),
+path('teacher-exam', views.teacher_exam_view,name='teacher-exam'),
+path('teacher-add-exam', views.teacher_add_exam_view,name='teacher-add-exam'),
+path('teacher-view-exam', views.teacher_view_exam_view,name='teacher-view-exam'),
+path('delete-exam/<int:pk>', views.delete_exam_view,name='delete-exam'),
 
-path('student-dashboard', views.student_dashboard_view,name='student-dashboard'),
-path('student-exam', views.student_exam_view,name='student-exam'),
-path('take-exam/<int:pk>', views.take_exam_view,name='take-exam'),
-path('start-exam/<int:pk>', views.start_exam_view,name='start-exam'),
 
-path('calculate-marks', views.calculate_marks_view,name='calculate-marks'),
-path('view-result', views.view_result_view,name='view-result'),
-path('check-marks/<int:pk>', views.check_marks_view,name='check-marks'),
-path('student-marks', views.student_marks_view,name='student-marks'),
+path('teacher-question', views.teacher_question_view,name='teacher-question'),
+path('teacher-add-question', views.teacher_add_question_view,name='teacher-add-question'),
+path('teacher-view-question', views.teacher_view_question_view,name='teacher-view-question'),
+path('see-question/<int:pk>', views.see_question_view,name='see-question'),
+path('remove-question/<int:pk>', views.remove_question_view,name='remove-question'),
 ]
