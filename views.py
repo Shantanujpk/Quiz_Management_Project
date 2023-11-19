@@ -6,286 +6,120 @@ from django.http import HttpResponseRedirect
 from django.contrib.auth.decorators import login_required,user_passes_test
 from django.conf import settings
 from datetime import date, timedelta
-from django.db.models import Q
-from django.core.mail import send_mail
+from quiz_management_app import models as QMODEL
 from teacher_management_app import models as TMODEL
-from student_management_app import models as SMODEL
-from teacher_management_app import forms as TFORM
-from student_management_app import forms as SFORM
-from django.contrib.auth.models import User
 
-#To Display Quiz Home View
-def home_view(request):
+def studentclick_view(request):
     if request.user.is_authenticated:
-        return HttpResponseRedirect('afterlogin')  
-    return render(request, 'quiz_management_app/index.html')
+        return HttpResponseRedirect('afterlogin')
+    return render(request,'student_management_app/student_homepage.html')
 
+def student_signup_view(request):
+    userForm=forms.StudentUserForm()
+    studentForm=forms.StudentForm()
+    mydict={'userForm':userForm,'studentForm':studentForm}
+    if request.method=='POST':
+        userForm=forms.StudentUserForm(request.POST)
+        studentForm=forms.StudentForm(request.POST,request.FILES)
+        if userForm.is_valid() and studentForm.is_valid():
+            user=userForm.save()
+            user.set_password(user.password)
+            user.save()
+            student=studentForm.save(commit=False)
+            student.user=user
+            student.save()
+            my_student_group = Group.objects.get_or_create(name='STUDENT')
+            my_student_group[0].user_set.add(user)
+        return HttpResponseRedirect('studentlogin')
+    return render(request,'student_management_app/studentsignup.html',context=mydict)
 
-#To Display Teacher
-def is_teacher(user):
-    return user.groups.filter(name='TEACHER').exists()
-
-# To Display Student
 def is_student(user):
     return user.groups.filter(name='STUDENT').exists()
 
-#After Student Login
-def afterlogin_view(request):
-    if is_student(request.user):      
-        return redirect('student_management_app/student-dashboard')
-                
-    elif is_teacher(request.user):
-        # accountapproval=TMODEL.Teacher.objects.all().filter(user_id=request.user.id,status=True)
-        # if accountapproval:
-        return redirect('teacher_management_app/teacher-dashboard')
-        # else:
-        #     return render(request,'teacher/teacher_wait_for_approval.html')
+@login_required(login_url='studentlogin')
+@user_passes_test(is_student)
+def student_dashboard_view(request):
+    dict={
+    
+    'total_course':QMODEL.Course.objects.all().count(),
+    'total_question':QMODEL.Question.objects.all().count(),
+    }
+    return render(request,'student_management_app/student_dashboard.html',context=dict)
+
+@login_required(login_url='studentlogin')
+@user_passes_test(is_student)
+def student_exam_view(request):
+    courses=QMODEL.Course.objects.all()
+    return render(request,'student_management_app/student_exam.html',{'courses':courses})
+
+@login_required(login_url='studentlogin')
+@user_passes_test(is_student)
+def take_exam_view(request,pk):
+    course=QMODEL.Course.objects.get(id=pk)
+    total_questions=QMODEL.Question.objects.all().filter(course=course).count()
+    questions=QMODEL.Question.objects.all().filter(course=course)
+    total_marks=0
+    for q in questions:
+        total_marks=total_marks + q.marks
+    
+    return render(request,'student_management_app/take_exam.html',{'course':course,'total_questions':total_questions,'total_marks':total_marks})
+
+@login_required(login_url='studentlogin')
+@user_passes_test(is_student)
+def start_exam_view(request,pk):
+    course=QMODEL.Course.objects.get(id=pk)
+    questions=QMODEL.Question.objects.all().filter(course=course)
+    if request.method=='POST':
+        pass
+    response= render(request,'student_management_app/start_exam.html',{'course':course,'questions':questions})
+    response.set_cookie('course_id',course.id)
+    return response
+
+
+@login_required(login_url='studentlogin')
+@user_passes_test(is_student)
+def calculate_marks_view(request):
+    if request.COOKIES.get('course_id') is not None:
+        course_id = request.COOKIES.get('course_id')
+        course=QMODEL.Course.objects.get(id=course_id)
+        
+        total_marks=0
+        questions=QMODEL.Question.objects.all().filter(course=course)
+        for i in range(len(questions)):
+            
+            selected_ans = request.COOKIES.get(str(i+1))
+            actual_answer = questions[i].answer
+            if selected_ans == actual_answer:
+                total_marks = total_marks + questions[i].marks
+        student = models.Student.objects.get(user_id=request.user.id)
+        result = QMODEL.Result()
+        result.marks=total_marks
+        result.exam=course
+        result.student=student
+        result.save()
+
+        return HttpResponseRedirect('view-result')
 
 
 
-# def adminclick_view(request):
-#     if request.user.is_authenticated:
-#         return HttpResponseRedirect('afterlogin')
-#     return HttpResponseRedirect('adminlogin')
+@login_required(login_url='studentlogin')
+@user_passes_test(is_student)
+def view_result_view(request):
+    courses=QMODEL.Course.objects.all()
+    return render(request, 'student_management_app/student_marks.html', {'courses': courses})
 
-
-# @login_required(login_url='adminlogin')
-# def admin_dashboard_view(request):
-#     dict={
-#     'total_student':SMODEL.Student.objects.all().count(),
-#     'total_teacher':TMODEL.Teacher.objects.all().filter(status=True).count(),
-#     'total_course':models.Course.objects.all().count(),
-#     'total_question':models.Question.objects.all().count(),
-#     }
-#     return render(request,'quiz/admin_dashboard.html',context=dict)
-
-# @login_required(login_url='adminlogin')
-# def admin_teacher_view(request):
-#     dict={
-#     'total_teacher':TMODEL.Teacher.objects.all().filter(status=True).count(),
-#     'pending_teacher':TMODEL.Teacher.objects.all().filter(status=False).count(),
-#     'salary':TMODEL.Teacher.objects.all().filter(status=True).aggregate(Sum('salary'))['salary__sum'],
-#     }
-#     return render(request,'quiz/admin_teacher.html',context=dict)
-
-# @login_required(login_url='adminlogin')
-# def admin_view_teacher_view(request):
-#     teachers= TMODEL.Teacher.objects.all().filter(status=True)
-#     return render(request,'quiz/admin_view_teacher.html',{'teachers':teachers})
-
-
-# @login_required(login_url='adminlogin')
-# def update_teacher_view(request,pk):
-#     teacher=TMODEL.Teacher.objects.get(id=pk)
-#     user=TMODEL.User.objects.get(id=teacher.user_id)
-#     userForm=TFORM.TeacherUserForm(instance=user)
-#     teacherForm=TFORM.TeacherForm(request.FILES,instance=teacher)
-#     mydict={'userForm':userForm,'teacherForm':teacherForm}
-#     if request.method=='POST':
-#         userForm=TFORM.TeacherUserForm(request.POST,instance=user)
-#         teacherForm=TFORM.TeacherForm(request.POST,request.FILES,instance=teacher)
-#         if userForm.is_valid() and teacherForm.is_valid():
-#             user=userForm.save()
-#             user.set_password(user.password)
-#             user.save()
-#             teacherForm.save()
-#             return redirect('admin-view-teacher')
-#     return render(request,'quiz/update_teacher.html',context=mydict)
-
-
-
-# @login_required(login_url='adminlogin')
-# def delete_teacher_view(request,pk):
-#     teacher=TMODEL.Teacher.objects.get(id=pk)
-#     user=User.objects.get(id=teacher.user_id)
-#     user.delete()
-#     teacher.delete()
-#     return HttpResponseRedirect('/admin-view-teacher')
-
-
-
-
-# @login_required(login_url='adminlogin')
-# def admin_view_pending_teacher_view(request):
-#     teachers= TMODEL.Teacher.objects.all().filter(status=False)
-#     return render(request,'quiz/admin_view_pending_teacher.html',{'teachers':teachers})
-
-
-# @login_required(login_url='adminlogin')
-# def approve_teacher_view(request,pk):
-#     teacherSalary=forms.TeacherSalaryForm()
-#     if request.method=='POST':
-#         teacherSalary=forms.TeacherSalaryForm(request.POST)
-#         if teacherSalary.is_valid():
-#             teacher=TMODEL.Teacher.objects.get(id=pk)
-#             teacher.salary=teacherSalary.cleaned_data['salary']
-#             teacher.status=True
-#             teacher.save()
-#         else:
-#             print("form is invalid")
-#         return HttpResponseRedirect('/admin-view-pending-teacher')
-#     return render(request,'quiz/salary_form.html',{'teacherSalary':teacherSalary})
-
-# @login_required(login_url='adminlogin')
-# def reject_teacher_view(request,pk):
-#     teacher=TMODEL.Teacher.objects.get(id=pk)
-#     user=User.objects.get(id=teacher.user_id)
-#     user.delete()
-#     teacher.delete()
-#     return HttpResponseRedirect('/admin-view-pending-teacher')
-
-# @login_required(login_url='adminlogin')
-# def admin_view_teacher_salary_view(request):
-#     teachers= TMODEL.Teacher.objects.all().filter(status=True)
-#     return render(request,'quiz/admin_view_teacher_salary.html',{'teachers':teachers})
-
-
-
-
-# @login_required(login_url='adminlogin')
-# def admin_student_view(request):
-#     dict={
-#     'total_student':SMODEL.Student.objects.all().count(),
-#     }
-#     return render(request,'quiz/admin_student.html',context=dict)
-
-# @login_required(login_url='adminlogin')
-# def admin_view_student_view(request):
-#     students= SMODEL.Student.objects.all()
-#     return render(request,'quiz/admin_view_student.html',{'students':students})
-
-
-
-# @login_required(login_url='adminlogin')
-# def update_student_view(request,pk):
-#     student=SMODEL.Student.objects.get(id=pk)
-#     user=SMODEL.User.objects.get(id=student.user_id)
-#     userForm=SFORM.StudentUserForm(instance=user)
-#     studentForm=SFORM.StudentForm(request.FILES,instance=student)
-#     mydict={'userForm':userForm,'studentForm':studentForm}
-#     if request.method=='POST':
-#         userForm=SFORM.StudentUserForm(request.POST,instance=user)
-#         studentForm=SFORM.StudentForm(request.POST,request.FILES,instance=student)
-#         if userForm.is_valid() and studentForm.is_valid():
-#             user=userForm.save()
-#             user.set_password(user.password)
-#             user.save()
-#             studentForm.save()
-#             return redirect('admin-view-student')
-#     return render(request,'quiz/update_student.html',context=mydict)
-
-
-
-# @login_required(login_url='adminlogin')
-# def delete_student_view(request,pk):
-#     student=SMODEL.Student.objects.get(id=pk)
-#     user=User.objects.get(id=student.user_id)
-#     user.delete()
-#     student.delete()
-#     return HttpResponseRedirect('/admin-view-student')
-
-
-# @login_required(login_url='adminlogin')
-# def admin_course_view(request):
-#     return render(request,'quiz/admin_course.html')
-
-
-# @login_required(login_url='adminlogin')
-# def admin_add_course_view(request):
-#     courseForm=forms.CourseForm()
-#     if request.method=='POST':
-#         courseForm=forms.CourseForm(request.POST)
-#         if courseForm.is_valid():        
-#             courseForm.save()
-#         else:
-#             print("form is invalid")
-#         return HttpResponseRedirect('/admin-view-course')
-#     return render(request,'quiz/admin_add_course.html',{'courseForm':courseForm})
-
-
-# @login_required(login_url='adminlogin')
-# def admin_view_course_view(request):
-#     courses = models.Course.objects.all()
-#     return render(request,'quiz/admin_view_course.html',{'courses':courses})
-
-# @login_required(login_url='adminlogin')
-# def delete_course_view(request,pk):
-#     course=models.Course.objects.get(id=pk)
-#     course.delete()
-#     return HttpResponseRedirect('/admin-view-course')
-
-
-
-# @login_required(login_url='adminlogin')
-# def admin_question_view(request):
-#     return render(request,'quiz/admin_question.html')
-
-
-# @login_required(login_url='adminlogin')
-# def admin_add_question_view(request):
-#     questionForm=forms.QuestionForm()
-#     if request.method=='POST':
-#         questionForm=forms.QuestionForm(request.POST)
-#         if questionForm.is_valid():
-#             question=questionForm.save(commit=False)
-#             course=models.Course.objects.get(id=request.POST.get('courseID'))
-#             question.course=course
-#             question.save()       
-#         else:
-#             print("form is invalid")
-#         return HttpResponseRedirect('/admin-view-question')
-#     return render(request,'quiz/admin_add_question.html',{'questionForm':questionForm})
-
-
-# @login_required(login_url='adminlogin')
-# def admin_view_question_view(request):
-#     courses= models.Course.objects.all()
-#     return render(request,'quiz/admin_view_question.html',{'courses':courses})
-
-# @login_required(login_url='adminlogin')
-# def view_question_view(request,pk):
-#     questions=models.Question.objects.all().filter(course_id=pk)
-#     return render(request,'quiz/view_question.html',{'questions':questions})
-
-# @login_required(login_url='adminlogin')
-# def delete_question_view(request,pk):
-#     question=models.Question.objects.get(id=pk)
-#     question.delete()
-#     return HttpResponseRedirect('/admin-view-question')
-
-# @login_required(login_url='adminlogin')
-# def admin_view_student_marks_view(request):
-#     students= SMODEL.Student.objects.all()
-#     return render(request,'quiz/admin_view_student_marks.html',{'students':students})
-
-# @login_required(login_url='adminlogin')
-# def admin_view_marks_view(request,pk):
-#     courses = models.Course.objects.all()
-#     response =  render(request,'quiz/admin_view_marks.html',{'courses':courses})
-#     response.set_cookie('student_id',str(pk))
-#     return response
-
-# @login_required(login_url='adminlogin')
-# def admin_check_marks_view(request,pk):
-#     course = models.Course.objects.get(id=pk)
-#     student_id = request.COOKIES.get('student_id')
-#     student= SMODEL.Student.objects.get(id=student_id)
-
-#     results= models.Result.objects.all().filter(exam=course).filter(student=student)
-#     return render(request,'quiz/admin_check_marks.html',{'results':results})
     
 
-# def aboutus_view(request):
-#     return render(request,'quiz/aboutus.html')
+@login_required(login_url='studentlogin')
+@user_passes_test(is_student)
+def check_marks_view(request,pk):
+    course=QMODEL.Course.objects.get(id=pk)
+    student = models.Student.objects.get(user_id=request.user.id)
+    results= QMODEL.Result.objects.all().filter(exam=course).filter(student=student)
+    return render(request,'student_management_app/check_marks.html',{'results':results})
 
-# def contactus_view(request):
-#     sub = forms.ContactusForm()
-#     if request.method == 'POST':
-#         sub = forms.ContactusForm(request.POST)
-#         if sub.is_valid():
-#             email = sub.cleaned_data['Email']
-#             name=sub.cleaned_data['Name']
-#             message = sub.cleaned_data['Message']
-#             send_mail(str(name)+' || '+str(email),message,settings.EMAIL_HOST_USER, settings.EMAIL_RECEIVING_USER, fail_silently = False)
-#             return render(request, 'quiz/contactussuccess.html')
-#     return render(request, 'quiz/contactus.html', {'form':sub})
+@login_required(login_url='studentlogin')
+@user_passes_test(is_student)
+def student_marks_view(request):
+    courses=QMODEL.Course.objects.all()
+    return render(request,'student_management_app/student_marks.html',{'courses':courses})
